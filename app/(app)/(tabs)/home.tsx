@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, SafeAreaView, FlatList, Keyboard } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet,  FlatList, Keyboard } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import Header from '../../../src/components/Header';
 import allIndianCitiesByState from '../../../src/assets/indian-cities.json';
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface City {
   name: string;
