@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -7,107 +7,113 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import api from "../src/api";
+import { useApi } from "../src/useApi"; // NEW: Import our custom hook
+
+// NEW: Define API functions separately for clarity
+const registerUserApi = (params: any) => api.post("/users/register", params);
 
 export default function SignupScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  // NEW: State for validation errors
+  const [errors, setErrors] = useState<{ email?: string; password?: string }>(
+    {}
+  );
   const router = useRouter();
 
-  const isValidEmail = (email: string) => {
-    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return regex.test(email);
-  };
+  // NEW: Use our custom hook for the signup API call
+  const {
+    data,
+    error,
+    isLoading,
+    request: performSignup,
+  } = useApi(registerUserApi);
 
-  const isFormValid = () => {
-    if (!email || !password) {
-      Alert.alert("Error", "Please fill in all fields.");
-      return false;
+  // NEW: useEffect to handle navigation after successful signup
+  useEffect(() => {
+    if (data?.success) {
+      Alert.alert(
+        "OTP Sent",
+        "An OTP has been sent to your email. Please verify.",
+        [
+          {
+            text: "OK",
+            onPress: () =>
+              router.push({ pathname: "/verify-otp", params: { email } }),
+          },
+        ]
+      );
     }
-    if (!isValidEmail(email)) {
-      Alert.alert("Error", "Please enter a valid email address.");
-      return false;
+  }, [data]);
+
+  // NEW: Improved validation function that returns an error object
+  const validateForm = () => {
+    const newErrors: { email?: string; password?: string } = {};
+    if (!email) {
+      newErrors.email = "Email is required.";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      newErrors.email = "Please enter a valid email address.";
     }
-    if (password.length < 6) {
-      Alert.alert("Error", "Password must be at least 6 characters long.");
-      return false;
+    if (!password) {
+      newErrors.password = "Password is required.";
+    } else if (password.length < 6) {
+      newErrors.password = "Password must be at least 6 characters long.";
     }
-    return true;
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0; // Return true if no errors
   };
 
   const handleSignup = async () => {
-    if (!isFormValid()) return;
+    if (!validateForm()) return;
 
-    setIsLoading(true);
-    try {
-      const res = await api.post("/users/register", { email, password });
-
-      console.log("Signup response:", res.data);
-
-      if (res.data && res.data.success) {
-        Alert.alert(
-          "OTP Sent",
-          "An OTP has been sent to your email. Please verify.",
-          [
-            {
-              text: "OK",
-              onPress: () =>
-                router.push({
-                  pathname: "/verify-otp",
-                  params: { email }, // Pass email for OTP verification screen
-                }),
-            },
-          ]
-        );
-      } else {
-        Alert.alert("Signup Failed", res.data.message || "An error occurred.");
-      }
-    } catch (error: any) {
-      console.log("Signup error:", error);
-      let message = "An error occurred.";
-      if (error.response?.data?.message) {
-        message = error.response.data.message;
-      } else if (error.message) {
-        message = error.message;
-      }
-      Alert.alert("Signup Failed", message);
-    } finally {
-      setIsLoading(false);
-    }
+    // The hook handles isLoading and error states automatically
+    performSignup({ email, password });
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <Text style={styles.title}>Create an Account</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        editable={!isLoading}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        editable={!isLoading}
-      />
+      <View>
+        <TextInput
+          style={[styles.input, errors.email && styles.inputError]}
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          editable={!isLoading}
+          onBlur={validateForm} // Optional: validate when user leaves the field
+        />
+        {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+      </View>
+
+      <View>
+        <TextInput
+          style={[styles.input, errors.password && styles.inputError]}
+          placeholder="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          editable={!isLoading}
+          onBlur={validateForm} // Optional: validate when user leaves the field
+        />
+        {errors.password && (
+          <Text style={styles.errorText}>{errors.password}</Text>
+        )}
+      </View>
+
+      {/* NEW: Display API error from the hook */}
+      {error && <Text style={styles.apiErrorText}>{error}</Text>}
 
       <TouchableOpacity
-        style={[
-          styles.button,
-          (!email || !password || isLoading) && styles.buttonDisabled,
-        ]}
+        style={[styles.button, isLoading && styles.buttonDisabled]}
         onPress={handleSignup}
-        disabled={!email || !password || isLoading}
+        disabled={isLoading}
       >
         {isLoading ? (
           <ActivityIndicator color="#fff" />
@@ -116,13 +122,17 @@ export default function SignupScreen() {
         )}
       </TouchableOpacity>
 
-      <TouchableOpacity disabled={isLoading} onPress={() => router.back()}>
+      <TouchableOpacity
+        disabled={isLoading}
+        onPress={() => router.replace("/login")}
+      >
         <Text style={styles.linkText}>Already have an account? Login</Text>
       </TouchableOpacity>
     </SafeAreaView>
   );
 }
 
+// NEW: Added styles for inline errors
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -141,10 +151,13 @@ const styles = StyleSheet.create({
     borderColor: "#ccc",
     borderWidth: 1,
     borderRadius: 8,
-    marginBottom: 15,
+    marginBottom: 5,
     paddingHorizontal: 15,
     backgroundColor: "#fff",
   },
+  inputError: { borderColor: "red" },
+  errorText: { color: "red", marginBottom: 10, marginLeft: 5 },
+  apiErrorText: { color: "red", textAlign: "center", marginBottom: 10 },
   button: {
     backgroundColor: "#0D47A1",
     padding: 15,

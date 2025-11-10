@@ -1,14 +1,41 @@
-// This is the layout specifically for your bottom navigation bar. It defines which tabs appear (Home, Inbox, Host, Profile), their icons, and their colors.
-
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
 import React from "react";
+import { Alert, TouchableOpacity, View } from "react-native";
+import { useAuth } from "../../../src/context/AuthContext"; // 1. Import useAuth
+
+// Note: We no longer need SecureStore or api here,
+// as the AuthContext handles all of that.
 
 export default function TabLayout() {
+  const router = useRouter();
+  const auth = useAuth(); // 2. Get the auth context
+
+  // 3. Define the logout function
+  const handleLogout = async () => {
+    Alert.alert("Logout", "Are you sure you want to log out?", [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Logout",
+        style: "destructive",
+        onPress: async () => {
+          // 4. Call the central auth.logout() function
+          await auth.logout();
+
+          // The root _layout.tsx will automatically
+          // redirect the user to the /login screen.
+        },
+      },
+    ]);
+  };
+
   return (
     <Tabs
       screenOptions={{
-        headerShown: false,
+        headerShown: false, // This keeps headers off for other tabs
         tabBarActiveTintColor: "#0D47A1",
         tabBarInactiveTintColor: "#999",
         tabBarStyle: {
@@ -35,19 +62,9 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="inbox"
-        options={{
-          title: "Inbox",
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "chatbubbles" : "chatbubbles-outline"}
-              size={26}
-              color={color}
-            />
-          ),
-        }}
-      />
+
+      {/* Inbox Tab is removed */}
+
       <Tabs.Screen
         name="host"
         options={{
@@ -64,13 +81,26 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: "Profile",
+          // 5. Configure the profile tab's header
+          title: "My Profile",
+          headerShown: true, // <-- This turns the header ON for this tab
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? "person" : "person-outline"}
               size={26}
               color={color}
             />
+          ),
+          // 6. Add the Edit and Logout buttons
+          headerRight: () => (
+            <View style={{ flexDirection: "row", gap: 10, marginRight: 15 }}>
+              <TouchableOpacity onPress={() => router.push("/editProfile")}>
+                <Ionicons name="create-outline" size={24} color="#0D47A1" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleLogout}>
+                <Ionicons name="log-out-outline" size={24} color="#C62828" />
+              </TouchableOpacity>
+            </View>
           ),
         }}
       />

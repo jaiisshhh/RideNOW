@@ -1,375 +1,281 @@
-import { Ionicons, MaterialIcons } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
+import { Feather, Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import * as SecureStore from "expo-secure-store";
-import React, { useEffect, useState } from "react";
+import React from "react";
 import {
   Alert,
   Image,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useAuth } from "../../../src/context/AuthContext"; // 1. Import useAuth
 
-export default function ProfileScreen() {
+export default function ProfileViewScreen() {
   const router = useRouter();
-  const [profileImage, setProfileImage] = useState<string | null>(null);
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [dob, setDob] = useState("Select Date of Birth");
-  const [aadhar, setAadhar] = useState<string | null>(null);
-  const [license, setLicense] = useState<string | null>(null);
+  const { user } = useAuth(); // 3. Get the user object from our global context!
 
-  const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
+  // 4. All the useApi and useEffect logic is GONE.
 
-  // Function to take the main profile selfie
-  const handleTakeSelfie = async () => {
-    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-    if (permissionResult.granted === false) {
-      Alert.alert(
-        "Permission Denied",
-        "You've refused to allow this app to access your camera."
-      );
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-    });
-
-    if (!result.canceled) {
-      setProfileImage(result.assets[0].uri);
-    }
-  };
-
-  const handleLogout = async () => {
-    // Clear all the stored authentication data
-    await SecureStore.deleteItemAsync("accessToken");
-    await SecureStore.deleteItemAsync("refreshToken");
-    await SecureStore.deleteItemAsync("userName");
-    await SecureStore.deleteItemAsync("userEmail");
-
-    // Navigate the user back to the login screen
-    router.replace("/login");
-  };
-
-  // --- Correctly Structured Document Handling Functions ---
-
-  // This function now correctly sits at the top level of the component
-  const showDocumentOptions = (docType: "aadhar" | "license") => {
-    Alert.alert(
-      `Upload ${docType === "aadhar" ? "Aadhar" : "License"}`,
-      "Choose an option",
-      [
-        {
-          text: "Take Photo",
-          onPress: () => takeDocPhoto(docType),
-        },
-        {
-          text: "Choose from Library",
-          onPress: () => chooseDocFromLibrary(docType),
-        },
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-      ]
+  // 5. Check if the user is somehow null (shouldn't happen, but good to check)
+  if (!user) {
+    // This can happen for a split second on logout
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.centered}>
+          <Text>Loading...</Text>
+        </View>
+      </SafeAreaView>
     );
-  };
+  }
 
-  const takeDocPhoto = async (docType: "aadhar" | "license") => {
-    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-    if (permissionResult.granted === false) {
-      Alert.alert(
-        "Permission Denied",
-        "You've refused to allow this app to access your camera."
-      );
-      return;
+  // Helper function to get document status
+  const getDocStatus = (
+    docType: "Aadhar" | "DL"
+  ): {
+    text: string;
+    color: string;
+    verified: boolean;
+  } => {
+    if (!user.verifiedDoc || user.verifiedDoc.length === 0) {
+      return { text: "Not Uploaded", color: "#C62828", verified: false };
     }
 
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      quality: 0.7,
-    });
+    // Find the specific document in the array
+    const doc = user.verifiedDoc.find((d: any) => d.docType === docType);
 
-    if (!result.canceled) {
-      if (docType === "aadhar") setAadhar(result.assets[0].uri);
-      else setLicense(result.assets[0].uri);
-    }
-  };
-
-  useEffect(() => {
-    const loadUserData = async () => {
-      try {
-        const storedName = await SecureStore.getItemAsync("userName");
-        const storedEmail = await SecureStore.getItemAsync("userEmail");
-
-        if (storedName) {
-          setName(storedName);
-        }
-        if (storedEmail) {
-          setEmail(storedEmail);
-        }
-      } catch (e) {
-        console.error("Failed to load user data:", e);
-      }
-    };
-
-    loadUserData();
-  }, []);
-
-  const chooseDocFromLibrary = async (docType: "aadhar" | "license") => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert(
-        "Permission Denied",
-        "Sorry, we need access to your photos to upload documents."
-      );
-      return;
+    if (!doc) {
+      return { text: "Not Uploaded", color: "#C62828", verified: false };
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 1,
-    });
-
-    if (!result.canceled && result.assets) {
-      if (docType === "aadhar") setAadhar(result.assets[0].uri);
-      else setLicense(result.assets[0].uri);
+    switch (doc.status) {
+      case "approved":
+        return { text: "Verified", color: "#2E7D32", verified: true };
+      case "pending":
+        return { text: "Pending Review", color: "#FF8F00", verified: false };
+      case "rejected":
+        return { text: "Rejected", color: "#C62828", verified: false };
+      default:
+        return { text: "Not Verified", color: "#C62828", verified: false };
     }
   };
 
-  const showDatePicker = () => setDatePickerVisibility(true);
-  const hideDatePicker = () => setDatePickerVisibility(false);
-  const handleDateConfirm = (date: Date) => {
-    setDob(date.toLocaleDateString("en-GB"));
-    hideDatePicker();
-  };
+  const aadharStatus = getDocStatus("Aadhar");
+  const dlStatus = getDocStatus("DL");
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.profileHeader}>
-          <TouchableOpacity
-            onPress={handleTakeSelfie}
-            style={styles.avatarContainer}
-          >
-            {profileImage ? (
-              <Image source={{ uri: profileImage }} style={styles.avatar} />
+        {/* Profile Header */}
+        <View style={styles.header}>
+          <View style={styles.avatarContainer}>
+            {/* 6. Use the 'user' object from context */}
+            {user.profile?.photo ? (
+              <Image
+                source={{ uri: user.profile.photo }}
+                style={styles.avatar}
+              />
             ) : (
-              <Ionicons name="camera" size={40} color="#0D47A1" />
+              <View style={styles.placeholderAvatar}>
+                <Ionicons name="person" size={50} color="#0D47A1" />
+              </View>
             )}
-            <View style={styles.cameraIcon}>
-              <Ionicons name="add-circle" size={24} color="#0D47A1" />
-            </View>
-          </TouchableOpacity>
-          <View style={styles.userInfo}>
-            <Text style={styles.userName}>Your Name</Text>
-            <View style={styles.verifiedStatus}>
-              <MaterialIcons name="verified" size={16} color="#ccc" />
-              <Text style={styles.verifiedText}>Not Verified</Text>
-            </View>
           </View>
+
+          {/* 7. Use the 'user' object from context */}
+          <Text style={styles.userName}>{user.name || "RideNow User"}</Text>
+          <Text style={styles.userEmail}>{user.email}</Text>
         </View>
 
-        <View style={styles.formSection}>
-          <Text style={styles.sectionTitle}>Personal Details</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Full Name"
-            value={name}
-            onChangeText={setName}
+        {/* Verification Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Verification Status</Text>
+          <VerificationRow
+            label="Email Verification"
+            isVerified={user.isEmailVerified}
+            onVerify={() =>
+              Alert.alert("Email Verification", "This email is verified.")
+            }
           />
-          <View style={styles.phoneInputContainer}>
-            <Text style={styles.countryCode}>+91</Text>
-            <TextInput
-              style={styles.phoneInput}
-              placeholder="Phone Number"
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              maxLength={10}
-            />
-          </View>
-          <TextInput
-            style={styles.input}
-            placeholder="Email Address"
-            placeholderTextColor="#888"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
+          <VerificationRow
+            label="Phone Verification"
+            isVerified={user.isPhoneVerified}
+            onVerify={() =>
+              Alert.alert(
+                "Phone Verification",
+                "Navigate to phone verify flow."
+              )
+            }
           />
-          <TouchableOpacity style={styles.input} onPress={showDatePicker}>
-            <Text
-              style={
-                dob === "Select Date of Birth"
-                  ? styles.placeholderText
-                  : styles.inputText
-              }
-            >
-              {dob}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.formSection}>
-          <Text style={styles.sectionTitle}>Verification Documents</Text>
-          <DocumentPicker
-            title="Aadhar Card"
-            imageUri={aadhar}
-            onPick={() => showDocumentOptions("aadhar")}
+          <VerificationRow
+            label="Aadhar Card"
+            isVerified={aadharStatus.verified}
+            statusText={aadharStatus.text}
+            statusColor={aadharStatus.color}
+            onVerify={() => router.push("/editProfile")} // Send to upload
           />
-          {/* Corrected the typo here */}
-          <DocumentPicker
-            title="Driving License"
-            imageUri={license}
-            onPick={() => showDocumentOptions("license")}
+          <VerificationRow
+            label="Driving License"
+            isVerified={dlStatus.verified}
+            statusText={dlStatus.text}
+            statusColor={dlStatus.color}
+            onVerify={() => router.push("/editProfile")} // Send to upload
           />
         </View>
 
-        <TouchableOpacity style={styles.saveButton}>
-          <Text style={styles.saveButtonText}>Save Details</Text>
-        </TouchableOpacity>
-
-        {/* Add this temporary logout button */}
-        <TouchableOpacity
-          style={[styles.saveButton, styles.logoutButton]}
-          onPress={handleLogout}
-        >
-          <Text style={styles.saveButtonText}>Logout</Text>
-        </TouchableOpacity>
+        {/* Other Options */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Account</Text>
+          <OptionRow
+            icon="receipt-outline" // New icon
+            label="Booking History" // New label
+            onPress={() => router.push("/booking-history")} // New action
+          />
+          <OptionRow
+            icon="notifications-outline"
+            label="Notifications"
+            onPress={() => {}}
+          />
+          <OptionRow
+            icon="help-circle-outline"
+            label="Help & Support"
+            onPress={() => {}}
+          />
+        </View>
       </ScrollView>
-
-      <DateTimePickerModal
-        isVisible={isDatePickerVisible}
-        mode="date"
-        onConfirm={handleDateConfirm}
-        onCancel={hideDatePicker}
-      />
     </SafeAreaView>
   );
 }
 
-// --- Helper component (remains the same) ---
-const DocumentPicker = ({
-  title,
-  imageUri,
-  onPick,
+// --- HELPER COMPONENTS (Unchanged) ---
+
+const VerificationRow = ({
+  label,
+  isVerified,
+  statusText,
+  statusColor,
+  onVerify,
 }: {
-  title: string;
-  imageUri: string | null;
-  onPick: () => void;
+  label: string;
+  isVerified: boolean;
+  statusText?: string;
+  statusColor?: string;
+  onVerify: () => void;
 }) => (
-  <TouchableOpacity style={styles.docPicker} onPress={onPick}>
-    {imageUri ? (
-      <Image source={{ uri: imageUri }} style={styles.docPreview} />
-    ) : (
-      <>
-        <Ionicons name="cloud-upload-outline" size={30} color="#0D47A1" />
-        <Text style={styles.docPickerText}>Upload {title}</Text>
-      </>
-    )}
+  <View style={styles.row}>
+    <View style={styles.rowLeft}>
+      <Feather
+        name={isVerified ? "check-circle" : "alert-circle"}
+        size={22}
+        color={isVerified ? "#2E7D32" : "#C62828"}
+      />
+      <Text style={styles.rowLabel}>{label}</Text>
+    </View>
+    <TouchableOpacity onPress={onVerify}>
+      <Text
+        style={[
+          styles.rowStatus,
+          { color: statusColor || (isVerified ? "#2E7D32" : "#0D47A1") },
+        ]}
+      >
+        {statusText || (isVerified ? "Verified" : "Verify Now")}
+      </Text>
+    </TouchableOpacity>
+  </View>
+);
+
+const OptionRow = ({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: any;
+  label: string;
+  onPress: () => void;
+}) => (
+  <TouchableOpacity style={styles.row} onPress={onPress}>
+    <View style={styles.rowLeft}>
+      <Ionicons name={icon} size={22} color="#555" />
+      <Text style={styles.rowLabel}>{label}</Text>
+    </View>
+    <MaterialIcons name="chevron-right" size={24} color="#999" />
   </TouchableOpacity>
 );
 
-// --- Styles (remains the same) ---
+// --- STYLES (Unchanged) ---
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#f4f6f8" },
-  container: { padding: 20 },
-  profileHeader: {
-    flexDirection: "row",
+  container: { paddingBottom: 20 },
+  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+  header: {
+    backgroundColor: "#fff",
+    paddingVertical: 30,
+    paddingHorizontal: 20,
     alignItems: "center",
-    marginBottom: 30,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
   },
   avatarContainer: {
+    marginBottom: 10,
+  },
+  avatar: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: "#e0e0e0",
+  },
+  placeholderAvatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: "#e9eef2",
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 2,
-    borderColor: "#0D47A1",
   },
-  avatar: { width: "100%", height: "100%", borderRadius: 50 },
-  cameraIcon: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    backgroundColor: "white",
-    borderRadius: 12,
+  userName: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "#333",
   },
-  userInfo: { marginLeft: 20 },
-  userName: { fontSize: 22, fontWeight: "bold", color: "#333" },
-  verifiedStatus: { flexDirection: "row", alignItems: "center", marginTop: 5 },
-  verifiedText: { marginLeft: 5, color: "#aaa", fontStyle: "italic" },
-  formSection: { marginBottom: 25 },
+  userEmail: {
+    fontSize: 16,
+    color: "#777",
+    marginTop: 4,
+  },
+  section: {
+    marginTop: 20,
+    backgroundColor: "#fff",
+    marginHorizontal: 15,
+    borderRadius: 10,
+    padding: 15,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "600",
     color: "#444",
-    marginBottom: 15,
-  },
-  input: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 15,
-    fontSize: 16,
     marginBottom: 10,
-    height: 55,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
   },
-  inputText: { fontSize: 16 },
-  placeholderText: { fontSize: 16, color: "#999" },
-  docPicker: {
-    borderWidth: 2,
-    borderColor: "#ccc",
-    borderStyle: "dashed",
-    borderRadius: 10,
-    height: 120,
-    justifyContent: "center",
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-    backgroundColor: "#fafafa",
-  },
-  docPreview: { width: "100%", height: "100%", borderRadius: 8 },
-  docPickerText: { marginTop: 5, color: "#555" },
-  saveButton: {
-    backgroundColor: "#0D47A1",
     paddingVertical: 15,
-    borderRadius: 10,
-    alignItems: "center",
   },
-  saveButtonText: { color: "white", fontSize: 18, fontWeight: "bold" },
-  logoutButton: {
-    backgroundColor: "#C62828", // A red color for logout
-    marginTop: 15,
-  },
-  phoneInputContainer: {
+  rowLeft: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    height: 55,
-    marginBottom: 10,
   },
-  countryCode: {
+  rowLabel: {
     fontSize: 16,
-    fontWeight: "bold",
-    paddingLeft: 15,
     color: "#333",
+    marginLeft: 15,
   },
-  phoneInput: {
-    flex: 1,
-    fontSize: 16,
-    padding: 15,
+  rowStatus: {
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

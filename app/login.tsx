@@ -1,6 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Link, useRouter } from "expo-router";
-import * as SecureStore from "expo-secure-store";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -15,14 +14,15 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
 import api from "../src/api";
+import { useAuth } from "../src/context/AuthContext"; // 1. We will use this now
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const router = useRouter();
+  const router = useRouter(); // We still need this for the <Link> component
+  const auth = useAuth(); // 2. Initialize the Auth Context
 
   const handleEmailLogin = async () => {
     console.log("Login attempt started");
@@ -34,33 +34,35 @@ export default function LoginScreen() {
     setIsLoading(true);
     try {
       console.log("Sending login request", { email, password });
+
+      // The API call is the same
       const res = await api.post("/users/login", { email, password });
       console.log("Received login response", res.data);
 
-      if (res.data && res.data.data.accessToken) {
-        const { user, accessToken, refreshToken } = res.data.data;
-        console.log("Storing tokens and user info securely");
+      // The backend returns { success: true, data: { user, accessToken, refreshToken } }
+      if (res.data.success && res.data.data.accessToken) {
+        // 3. THIS IS THE MAJOR CHANGE
+        // We let the AuthContext handle everything:
+        // - Storing tokens in SecureStore
+        // - Storing the user object
+        // - Updating the app state
+        await auth.login(res.data.data);
 
-        await SecureStore.setItemAsync("accessToken", accessToken);
-        await SecureStore.setItemAsync("refreshToken", refreshToken);
-        await SecureStore.setItemAsync("userName", user.fullName);
-        await SecureStore.setItemAsync("userEmail", user.email);
-
-        console.log("Navigating to home screen");
-        router.replace("/home");
+        // 4. REMOVED navigation.
+        // The root _layout.tsx is listening for auth.user
+        // and will navigate automatically.
+        // router.replace("/home"); <-- This is no longer needed
       } else {
         console.warn("Login failed: Unexpected response format", res.data);
-        Alert.alert("Login Failed", "Unexpected response from server.");
+        Alert.alert(
+          "Login Failed",
+          res.data.message || "Unexpected response from server."
+        );
       }
     } catch (error: any) {
       console.error("Login error caught:", error);
-
       if (error.response) {
         console.error("Error response data:", error.response.data);
-        console.error("Error response status:", error.response.status);
-        console.error("Error response headers:", error.response.headers);
-      } else {
-        console.error("Error message:", error.message);
       }
 
       Alert.alert(
@@ -120,7 +122,7 @@ export default function LoginScreen() {
 
         <Text style={styles.dividerText}>or</Text>
 
-        {/* Disabled Google login button */}
+        {/* Disabled Google login button (as in your file) */}
         <TouchableOpacity
           style={[styles.googleButton, { opacity: 0.6 }]}
           disabled={true}
@@ -147,6 +149,7 @@ export default function LoginScreen() {
   );
 }
 
+// --- STYLES (Unchanged) ---
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f4f6f8" },
   keyboardView: {
